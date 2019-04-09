@@ -1,0 +1,66 @@
+# vim:ft=perl:et:
+# change background color when focus lost/gained
+
+use strict;
+use warnings;
+use Time::HiRes qw(usleep);
+
+# URxvt.perl-ext-common: focus
+
+#  ENABLE: printf "\033]777;focus;on\007"
+# DISABLE: printf "\033]777;focus;off\007"
+
+
+
+# this works, but we are probably using the wrong event, look up tt_write and
+# friends.
+my $csi_in  = sprintf "printf %s", q{'\033]11;#ffff00\007'}
+  . sprintf "printf %s", q{'\033c'};
+
+my $csi_out = sprintf "printf %s", q{'\033]11;#ff0000\007'}
+  . sprintf "printf %s", q{'\033c'};
+
+
+sub on_start {
+  my ($self) = @_;
+  $self->{focus_activated} = 0;
+  $self->{has_focus}       = 0;
+}
+
+sub on_osc_seq_perl {
+  my ($self, $osc, $resp) = @_;
+
+  # Only act on the "\033]777;focus;XXX\007" sequence
+  return unless $osc =~ s/^focus;//;
+
+  # Note the subscription/unsubscription
+  $self->{focus_activated} = $osc eq 'on' ? 1 : 0;
+
+  # If subscribed and the terminal has focus, send first focus event to
+  # the program
+  if (($self->{focus_activated}) && ($self->{has_focus})) {
+    usleep(16000);
+    $self->tt_write($csi_in);
+  }
+}
+
+sub on_focus_in {
+  my ($self) = @_;
+
+  $self->{has_focus} = 1;
+
+  if ($self->{focus_activated}) {
+    # Delay this event 16 ms, so it is after the focus_out from the
+    # previous window.
+    usleep(16000);
+    $self->tt_write($csi_in);
+  }
+}
+
+sub on_focus_out {
+  my ($self) = @_;
+  $self->{has_focus} = 0;
+  if ($self->{focus_activated}) {
+    $self->tt_write($csi_out);
+  }
+}
